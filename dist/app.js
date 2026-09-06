@@ -480,8 +480,11 @@ canvas.addEventListener('pointermove', evt => {
 
 canvas.addEventListener('pointerup', () => {
   if (state.drawing?.type === 'crop') {
-    cropTo(state.drawing);
-    state.objects = state.objects.filter(o => o !== state.drawing);
+    const crop = state.drawing;
+    state.objects = state.objects.filter(o => o !== crop);
+    state.selected = null;
+    render();
+    cropTo(crop);
   }
   state.drawing = null;
   state.drag = null;
