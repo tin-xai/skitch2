@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Skitch Studio</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <div class="app">
+      <aside class="rail" aria-label="Tools">
+        <div class="brand">
+          <div class="brand-mark">S</div>
+          <div>
+            <strong>Skitch Studio</strong>
+            <span>Web annotations</span>
+          </div>
+        </div>
+
+        <div class="tool-grid" id="toolGrid">
+          <button class="tool active" data-tool="select" title="Select">⌖</button>
+          <button class="tool" data-tool="arrow" title="Arrow">↗</button>
+          <button class="tool" data-tool="rect" title="Rectangle">□</button>
+          <button class="tool" data-tool="pen" title="Pen">✎</button>
+          <button class="tool" data-tool="highlight" title="Highlight">▰</button>
+          <button class="tool" data-tool="text" title="Text">T</button>
+          <button class="tool" data-tool="icon" title="Icon stamp">★</button>
+          <button class="tool" data-tool="blur" title="Blur patch">▧</button>
+          <button class="tool" data-tool="pixelate" title="Pixelate patch">▦</button>
+          <button class="tool" data-tool="crop" title="Crop">⌗</button>
+        </div>
+
+        <div class="panel">
+          <label>Stroke <input id="colorInput" type="color" value="#ff3158"></label>
+          <label>Fill <input id="fillInput" type="color" value="#fff3a1"></label>
+          <label>Size <input id="sizeInput" type="range" min="2" max="72" value="24"></label>
+          <label>Opacity <input id="opacityInput" type="range" min="15" max="100" value="100"></label>
+          <label>Font
+            <select id="fontInput">
+              <option>Inter</option>
+              <option>Arial</option>
+              <option>Georgia</option>
+              <option>Courier New</option>
+            </select>
+          </label>
+          <div class="switches">
+            <label><input id="boldInput" type="checkbox"> Bold</label>
+            <label><input id="shadowInput" type="checkbox" checked> Shadow</label>
+            <label><input id="depthInput" type="checkbox"> 3D</label>
+          </div>
+        </div>
+
+        <div class="panel icons">
+          <div class="panel-title">Stamps</div>
+          <div id="stampGrid" class="stamp-grid"></div>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div class="actions">
+            <label class="file-button">
+              <input id="imageInput" type="file" accept="image/*">
+              Import
+            </label>
+            <button id="demoBtn">Demo</button>
+            <button id="undoBtn" title="Undo">↶</button>
+            <button id="redoBtn" title="Redo">↷</button>
+            <button id="deleteBtn" title="Delete selected">⌫</button>
+          </div>
+          <div class="actions">
+            <button id="copyBtn">Copy PNG</button>
+            <button id="exportBtn" class="primary">Export PNG</button>
+          </div>
+        </header>
+
+        <section class="stage-shell">
+          <canvas id="canvas" width="1280" height="820" aria-label="Annotation canvas"></canvas>
+          <textarea id="textEditor" spellcheck="false"></textarea>
+        </section>
+
+        <footer class="statusbar">
+          <span id="status">Import or paste a screenshot to start.</span>
+          <span id="meta">1280 × 820</span>
+        </footer>
+      </main>
+
+      <aside class="inspector">
+        <div class="panel">
+          <div class="panel-title">Selected</div>
+          <div id="selectionInfo" class="empty">Nothing selected</div>
+          <button id="bringForwardBtn">Bring forward</button>
+          <button id="sendBackBtn">Send back</button>
+          <button id="duplicateBtn">Duplicate</button>
+        </div>
+
+        <div class="panel">
+          <div class="panel-title">Canvas</div>
+          <label>Background
+            <select id="bgInput">
+              <option value="checker">Checker</option>
+              <option value="white">White</option>
+              <option value="dark">Dark</option>
+            </select>
+          </label>
+          <button id="clearBtn">Clear annotations</button>
+        </div>
+      </aside>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
