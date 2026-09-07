@@ -37,6 +37,7 @@ let state = {
   redo: [],
 };
 let galleryEntries = [];
+let activeGalleryId = null;
 const galleryDbPromise = openGalleryDatabase();
 
 function styleFromControls() {
@@ -84,8 +85,9 @@ function resizeCanvas(w, h) {
   metaEl.textContent = `${canvas.width} × ${canvas.height}`;
 }
 
-function makeDemo(savePrevious = true) {
-  if (savePrevious) saveCurrentToGallery({ silent: true });
+async function makeDemo(savePrevious = true) {
+  if (savePrevious) await saveCurrentToGallery({ silent: true });
+  activeGalleryId = null;
   pushHistory();
   state.bgImage = null;
   state.bgData = null;
@@ -169,17 +171,20 @@ function captureCleanCanvas() {
 }
 
 async function saveImageToGallery(imageData, { silent = false } = {}) {
+  const currentEntry = galleryEntries.find(item => item.id === activeGalleryId);
   const entry = {
-    id: crypto.randomUUID(),
+    id: activeGalleryId || crypto.randomUUID(),
     imageData,
     width: canvas.width,
     height: canvas.height,
-    createdAt: Date.now(),
+    createdAt: currentEntry?.createdAt || Date.now(),
+    updatedAt: Date.now(),
   };
+  activeGalleryId = entry.id;
 
   try {
     await writeGalleryEntry(entry);
-    galleryEntries.unshift(entry);
+    galleryEntries = [entry, ...galleryEntries.filter(item => item.id !== entry.id)];
     const overflow = galleryEntries.splice(GALLERY_LIMIT);
     await Promise.all(overflow.map(item => removeGalleryEntry(item.id)));
     renderGallery();
@@ -208,11 +213,11 @@ function renderGallery() {
 
     const image = document.createElement('img');
     image.src = entry.imageData;
-    image.alt = `Saved edit from ${new Date(entry.createdAt).toLocaleString()}`;
+    image.alt = `Saved edit from ${new Date(entry.updatedAt || entry.createdAt).toLocaleString()}`;
 
     const meta = document.createElement('span');
     meta.className = 'gallery-meta';
-    meta.textContent = new Date(entry.createdAt).toLocaleString([], {
+    meta.textContent = new Date(entry.updatedAt || entry.createdAt).toLocaleString([], {
       month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
     });
 
@@ -229,6 +234,7 @@ function renderGallery() {
       try {
         await removeGalleryEntry(entry.id);
         galleryEntries = galleryEntries.filter(item => item.id !== entry.id);
+        if (activeGalleryId === entry.id) activeGalleryId = null;
         renderGallery();
         status('Saved image removed from the gallery.');
       } catch {
@@ -241,8 +247,9 @@ function renderGallery() {
   });
 }
 
-function openGalleryEntry(entry) {
-  saveCurrentToGallery({ silent: true });
+async function openGalleryEntry(entry) {
+  if (activeGalleryId !== entry.id) await saveCurrentToGallery({ silent: true });
+  activeGalleryId = entry.id;
   pushHistory();
   const img = new Image();
   img.onload = () => {
@@ -259,7 +266,19 @@ function openGalleryEntry(entry) {
 
 async function loadGallery() {
   try {
-    galleryEntries = (await readGalleryEntries()).sort((a, b) => b.createdAt - a.createdAt).slice(0, GALLERY_LIMIT);
+    const storedEntries = (await readGalleryEntries()).sort((a, b) => (b.updatedAt || b.createdAt) - (a.updatedAt || a.createdAt));
+    const seenImages = new Set();
+    const duplicates = [];
+    galleryEntries = storedEntries.filter(entry => {
+      if (seenImages.has(entry.imageData)) {
+        duplicates.push(entry);
+        return false;
+      }
+      seenImages.add(entry.imageData);
+      return true;
+    });
+    const overflow = galleryEntries.splice(GALLERY_LIMIT);
+    await Promise.all([...duplicates, ...overflow].map(entry => removeGalleryEntry(entry.id)));
     renderGallery();
   } catch {
     galleryEmpty.textContent = 'Gallery storage is unavailable in this browser.';
@@ -709,8 +728,9 @@ window.addEventListener('paste', evt => {
 
 function loadImageFile(file) {
   const reader = new FileReader();
-  reader.onload = () => {
-    saveCurrentToGallery({ silent: true });
+  reader.onload = async () => {
+    await saveCurrentToGallery({ silent: true });
+    activeGalleryId = null;
     pushHistory();
     const img = new Image();
     img.onload = () => {
@@ -758,6 +778,7 @@ document.getElementById('clearGalleryBtn').addEventListener('click', async () =>
   try {
     await clearGalleryEntries();
     galleryEntries = [];
+    activeGalleryId = null;
     renderGallery();
     status('Gallery cleared.');
   } catch {
