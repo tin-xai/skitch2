@@ -4,6 +4,12 @@ const stage = document.querySelector('.stage-shell');
 const statusEl = document.getElementById('status');
 const metaEl = document.getElementById('meta');
 const textEditor = document.getElementById('textEditor');
+const galleryGrid = document.getElementById('galleryGrid');
+const galleryEmpty = document.getElementById('galleryEmpty');
+
+const GALLERY_DB_NAME = 'skitch-studio';
+const GALLERY_STORE = 'gallery';
+const GALLERY_LIMIT = 12;
 
 const controls = {
   color: document.getElementById('colorInput'),
@@ -30,6 +36,8 @@ let state = {
   history: [],
   redo: [],
 };
+let galleryEntries = [];
+const galleryDbPromise = openGalleryDatabase();
 
 function styleFromControls() {
   return {
@@ -76,7 +84,8 @@ function resizeCanvas(w, h) {
   metaEl.textContent = `${canvas.width} × ${canvas.height}`;
 }
 
-function makeDemo() {
+function makeDemo(savePrevious = true) {
+  if (savePrevious) saveCurrentToGallery({ silent: true });
   pushHistory();
   state.bgImage = null;
   state.bgData = null;
@@ -95,6 +104,166 @@ function makeDemo() {
 
 function status(text) {
   statusEl.textContent = text;
+}
+
+function openGalleryDatabase() {
+  return new Promise((resolve, reject) => {
+    const request = indexedDB.open(GALLERY_DB_NAME, 1);
+    request.onupgradeneeded = () => {
+      if (!request.result.objectStoreNames.contains(GALLERY_STORE)) {
+        request.result.createObjectStore(GALLERY_STORE, { keyPath: 'id' });
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function readGalleryEntries() {
+  const db = await galleryDbPromise;
+  return new Promise((resolve, reject) => {
+    const request = db.transaction(GALLERY_STORE).objectStore(GALLERY_STORE).getAll();
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function writeGalleryEntry(entry) {
+  const db = await galleryDbPromise;
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(GALLERY_STORE, 'readwrite');
+    transaction.objectStore(GALLERY_STORE).put(entry);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
+async function removeGalleryEntry(id) {
+  const db = await galleryDbPromise;
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(GALLERY_STORE, 'readwrite');
+    transaction.objectStore(GALLERY_STORE).delete(id);
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
+async function clearGalleryEntries() {
+  const db = await galleryDbPromise;
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(GALLERY_STORE, 'readwrite');
+    transaction.objectStore(GALLERY_STORE).clear();
+    transaction.oncomplete = resolve;
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
+function captureCleanCanvas() {
+  const selected = state.selected;
+  state.selected = null;
+  render();
+  const imageData = canvas.toDataURL('image/png');
+  state.selected = selected;
+  render();
+  return imageData;
+}
+
+async function saveImageToGallery(imageData, { silent = false } = {}) {
+  const entry = {
+    id: crypto.randomUUID(),
+    imageData,
+    width: canvas.width,
+    height: canvas.height,
+    createdAt: Date.now(),
+  };
+
+  try {
+    await writeGalleryEntry(entry);
+    galleryEntries.unshift(entry);
+    const overflow = galleryEntries.splice(GALLERY_LIMIT);
+    await Promise.all(overflow.map(item => removeGalleryEntry(item.id)));
+    renderGallery();
+    if (!silent) status('Current edit saved to the gallery.');
+  } catch {
+    if (!silent) status('The gallery could not save this image in your browser.');
+  }
+}
+
+function saveCurrentToGallery(options) {
+  return saveImageToGallery(captureCleanCanvas(), options);
+}
+
+function renderGallery() {
+  galleryGrid.replaceChildren();
+  galleryEmpty.hidden = galleryEntries.length > 0;
+
+  galleryEntries.forEach(entry => {
+    const item = document.createElement('div');
+    item.className = 'gallery-item';
+
+    const openButton = document.createElement('button');
+    openButton.className = 'gallery-open';
+    openButton.type = 'button';
+    openButton.title = 'Open this saved image';
+
+    const image = document.createElement('img');
+    image.src = entry.imageData;
+    image.alt = `Saved edit from ${new Date(entry.createdAt).toLocaleString()}`;
+
+    const meta = document.createElement('span');
+    meta.className = 'gallery-meta';
+    meta.textContent = new Date(entry.createdAt).toLocaleString([], {
+      month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+    });
+
+    openButton.append(image, meta);
+    openButton.addEventListener('click', () => openGalleryEntry(entry));
+
+    const deleteButton = document.createElement('button');
+    deleteButton.className = 'gallery-delete';
+    deleteButton.type = 'button';
+    deleteButton.title = 'Remove from gallery';
+    deleteButton.setAttribute('aria-label', 'Remove saved image from gallery');
+    deleteButton.textContent = '×';
+    deleteButton.addEventListener('click', async () => {
+      try {
+        await removeGalleryEntry(entry.id);
+        galleryEntries = galleryEntries.filter(item => item.id !== entry.id);
+        renderGallery();
+        status('Saved image removed from the gallery.');
+      } catch {
+        status('The saved image could not be removed.');
+      }
+    });
+
+    item.append(openButton, deleteButton);
+    galleryGrid.appendChild(item);
+  });
+}
+
+function openGalleryEntry(entry) {
+  saveCurrentToGallery({ silent: true });
+  pushHistory();
+  const img = new Image();
+  img.onload = () => {
+    state.bgData = entry.imageData;
+    state.bgImage = img;
+    state.objects = [];
+    state.selected = null;
+    resizeCanvas(entry.width || img.width, entry.height || img.height);
+    status('Saved image opened. You can continue annotating it.');
+    render();
+  };
+  img.src = entry.imageData;
+}
+
+async function loadGallery() {
+  try {
+    galleryEntries = (await readGalleryEntries()).sort((a, b) => b.createdAt - a.createdAt).slice(0, GALLERY_LIMIT);
+    renderGallery();
+  } catch {
+    galleryEmpty.textContent = 'Gallery storage is unavailable in this browser.';
+  }
 }
 
 function getPointer(evt) {
@@ -541,6 +710,7 @@ window.addEventListener('paste', evt => {
 function loadImageFile(file) {
   const reader = new FileReader();
   reader.onload = () => {
+    saveCurrentToGallery({ silent: true });
     pushHistory();
     const img = new Image();
     img.onload = () => {
@@ -558,26 +728,42 @@ function loadImageFile(file) {
 }
 
 function exportCanvas() {
+  const imageData = captureCleanCanvas();
   const link = document.createElement('a');
   link.download = `skitch-studio-${Date.now()}.png`;
-  link.href = canvas.toDataURL('image/png');
+  link.href = imageData;
   link.click();
+  saveImageToGallery(imageData, { silent: true });
+  status('PNG exported and saved to the gallery.');
 }
 
 async function copyCanvas() {
-  canvas.toBlob(async blob => {
-    try {
-      await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
-      status('PNG copied to clipboard.');
-    } catch {
-      status('Clipboard copy is not available in this browser. Use Export PNG.');
-    }
-  });
+  const imageData = captureCleanCanvas();
+  try {
+    const blob = await (await fetch(imageData)).blob();
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    saveImageToGallery(imageData, { silent: true });
+    status('PNG copied and saved to the gallery.');
+  } catch {
+    status('Clipboard copy is not available in this browser. Use Export PNG.');
+  }
 }
 
 document.getElementById('exportBtn').addEventListener('click', exportCanvas);
 document.getElementById('copyBtn').addEventListener('click', copyCanvas);
 document.getElementById('demoBtn').addEventListener('click', makeDemo);
+document.getElementById('saveGalleryBtn').addEventListener('click', () => saveCurrentToGallery());
+document.getElementById('clearGalleryBtn').addEventListener('click', async () => {
+  if (!galleryEntries.length || !confirm('Remove all saved images from this browser?')) return;
+  try {
+    await clearGalleryEntries();
+    galleryEntries = [];
+    renderGallery();
+    status('Gallery cleared.');
+  } catch {
+    status('The gallery could not be cleared.');
+  }
+});
 
 document.getElementById('undoBtn').addEventListener('click', () => {
   if (!state.history.length) return;
@@ -646,4 +832,6 @@ controls.bg.addEventListener('change', () => {
 });
 
 initStamps();
-makeDemo();
+renderGallery();
+loadGallery();
+makeDemo(false);

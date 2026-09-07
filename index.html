@@ -86,6 +86,16 @@
       </main>
 
       <aside class="inspector">
+        <div class="panel gallery-panel">
+          <div class="gallery-heading">
+            <div class="panel-title">Gallery</div>
+            <button id="clearGalleryBtn" class="text-button" type="button">Clear</button>
+          </div>
+          <button id="saveGalleryBtn" class="gallery-save" type="button">Save current</button>
+          <div id="galleryGrid" class="gallery-grid" aria-live="polite"></div>
+          <div id="galleryEmpty" class="empty gallery-empty">Saved edits will appear here.</div>
+        </div>
+
         <div class="panel">
           <div class="panel-title">Selected</div>
           <div id="selectionInfo" class="empty">Nothing selected</div>
