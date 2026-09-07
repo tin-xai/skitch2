@@ -279,6 +279,13 @@ canvas {
   margin-top: 8px;
 }
 
+.resize-hint {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 .gallery-heading {
   display: flex;
   align-items: center;

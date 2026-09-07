@@ -23,7 +23,12 @@ const controls = {
   bg: document.getElementById('bgInput'),
 };
 
-const stamps = ['★', '✓', '!', '?', '❤', '⚑', '⌖', '☰', '✚', '✕', '⌂', '⌁', '◉', '⬢', '◆', '●', '▲', '■', '◌', '⬒'];
+const stamps = [
+  '★', '✓', '!', '?', '❤', '⚑', '⌖', '☰', '✚', '✕',
+  '⌂', '⌁', '◉', '⬢', '◆', '●', '▲', '■', '◌', '⬒',
+  '😀', '😂', '😍', '😎', '🤔', '👏', '👍', '👎', '🔥', '🎉',
+  '🚀', '💡', '👀', '✅', '❌', '⚠️', '📌', '💬', '❤️', '💯'
+];
 let state = {
   tool: 'select',
   stamp: '★',
@@ -33,6 +38,7 @@ let state = {
   selected: null,
   drawing: null,
   drag: null,
+  resize: null,
   history: [],
   redo: [],
 };
@@ -513,10 +519,87 @@ function drawSelection(obj) {
   ctx.strokeRect(box.x - 6, box.y - 6, box.w + 12, box.h + 12);
   ctx.setLineDash([]);
   ctx.fillStyle = '#2f8cff';
-  [[box.x - 6, box.y - 6], [box.x + box.w + 6, box.y - 6], [box.x + box.w + 6, box.y + box.h + 6], [box.x - 6, box.y + box.h + 6]].forEach(([x, y]) => {
+  selectionHandles(box).forEach(({ x, y }) => {
     ctx.fillRect(x - 4, y - 4, 8, 8);
   });
   ctx.restore();
+}
+
+function selectionHandles(box) {
+  return [
+    { name: 'nw', x: box.x - 6, y: box.y - 6 },
+    { name: 'ne', x: box.x + box.w + 6, y: box.y - 6 },
+    { name: 'se', x: box.x + box.w + 6, y: box.y + box.h + 6 },
+    { name: 'sw', x: box.x - 6, y: box.y + box.h + 6 },
+  ];
+}
+
+function resizeHandleAt(point, obj) {
+  if (!obj) return null;
+  const rect = canvas.getBoundingClientRect();
+  const tolerance = 12 * canvas.width / rect.width;
+  return selectionHandles(bounds(obj)).find(handle =>
+    Math.abs(point.x - handle.x) <= tolerance && Math.abs(point.y - handle.y) <= tolerance
+  )?.name || null;
+}
+
+function mapCoordinate(value, oldStart, oldLength, newStart, newLength) {
+  if (oldLength < 1) return newStart + newLength / 2;
+  return newStart + ((value - oldStart) / oldLength) * newLength;
+}
+
+function resizeObject(obj, resize, point) {
+  const original = resize.original;
+  const oldBox = resize.box;
+  const handle = resize.handle;
+  const anchorX = handle.includes('w') ? oldBox.x + oldBox.w : oldBox.x;
+  const anchorY = handle.includes('n') ? oldBox.y + oldBox.h : oldBox.y;
+  const left = Math.min(anchorX, point.x);
+  const top = Math.min(anchorY, point.y);
+  const newBox = {
+    x: left,
+    y: top,
+    w: Math.max(12, Math.abs(point.x - anchorX)),
+    h: Math.max(12, Math.abs(point.y - anchorY)),
+  };
+  const scaleX = newBox.w / Math.max(1, oldBox.w);
+  const scaleY = newBox.h / Math.max(1, oldBox.h);
+  const mapX = value => mapCoordinate(value, oldBox.x, oldBox.w, newBox.x, newBox.w);
+  const mapY = value => mapCoordinate(value, oldBox.y, oldBox.h, newBox.y, newBox.h);
+
+  if (original.type === 'icon') {
+    obj.x = newBox.x + newBox.w / 2;
+    obj.y = newBox.y + newBox.h / 2;
+    obj.size = Math.min(300, Math.max(16, original.size * Math.max(scaleX, scaleY)));
+    return;
+  }
+
+  if (original.type === 'arrow') {
+    obj.x = mapX(original.x);
+    obj.y = mapY(original.y);
+    obj.x2 = mapX(original.x2);
+    obj.y2 = mapY(original.y2);
+    return;
+  }
+
+  if (original.type === 'pen') {
+    obj.points = original.points.map(p => ({ x: mapX(p.x), y: mapY(p.y) }));
+    return;
+  }
+
+  if (original.type === 'text') {
+    obj.x = newBox.x + 8;
+    obj.y = newBox.y + 8;
+    obj.w = newBox.w;
+    obj.h = newBox.h;
+    obj.size = Math.min(300, Math.max(10, original.size * Math.min(scaleX, scaleY)));
+    return;
+  }
+
+  obj.x = newBox.x;
+  obj.y = newBox.y;
+  obj.w = newBox.w;
+  obj.h = newBox.h;
 }
 
 function bounds(obj) {
@@ -580,7 +663,7 @@ function createObject(point) {
     return { ...base, type: state.tool, x: point.x, y: point.y, w: 1, h: 1 };
   }
   if (state.tool === 'pen') return { ...base, type: 'pen', points: [point] };
-  if (state.tool === 'icon') return { ...base, type: 'icon', x: point.x, y: point.y, stamp: state.stamp };
+  if (state.tool === 'icon') return { ...base, type: 'icon', x: point.x, y: point.y, stamp: state.stamp, size: Math.max(40, base.size) };
   if (state.tool === 'text') return { ...base, type: 'text', x: point.x, y: point.y, w: 290, h: 70, text: 'Double-click to edit' };
   return null;
 }
@@ -623,8 +706,24 @@ canvas.addEventListener('pointerdown', evt => {
   const hit = hitTest(point);
 
   if (state.tool === 'select') {
+    const selected = state.objects.find(o => o.id === state.selected);
+    const handle = resizeHandleAt(point, selected);
+    if (selected && handle) {
+      state.resize = {
+        id: selected.id,
+        handle,
+        box: bounds(selected),
+        original: JSON.parse(JSON.stringify(selected)),
+        historyPushed: false,
+      };
+      canvas.setPointerCapture(evt.pointerId);
+      return;
+    }
     state.selected = hit?.id || null;
-    if (hit) state.drag = { id: hit.id, last: point };
+    if (hit) {
+      state.drag = { id: hit.id, last: point, historyPushed: false };
+      canvas.setPointerCapture(evt.pointerId);
+    }
     render();
     return;
   }
@@ -644,16 +743,38 @@ canvas.addEventListener('pointerdown', evt => {
 
 canvas.addEventListener('pointermove', evt => {
   const point = getPointer(evt);
+  if (state.resize) {
+    const obj = state.objects.find(o => o.id === state.resize.id);
+    if (!obj) return;
+    if (!state.resize.historyPushed) {
+      pushHistory();
+      state.resize.historyPushed = true;
+    }
+    resizeObject(obj, state.resize, point);
+    render();
+    return;
+  }
   if (state.drag) {
     const obj = state.objects.find(o => o.id === state.drag.id);
     if (!obj) return;
+    if (!state.drag.historyPushed) {
+      pushHistory();
+      state.drag.historyPushed = true;
+    }
     moveObject(obj, point.x - state.drag.last.x, point.y - state.drag.last.y);
     state.drag.last = point;
     render();
     return;
   }
   const obj = state.drawing;
-  if (!obj) return;
+  if (!obj) {
+    if (state.tool === 'select') {
+      const selected = state.objects.find(o => o.id === state.selected);
+      const handle = resizeHandleAt(point, selected);
+      canvas.style.cursor = handle ? (handle === 'nw' || handle === 'se' ? 'nwse-resize' : 'nesw-resize') : 'default';
+    }
+    return;
+  }
   if (obj.type === 'arrow') {
     obj.x2 = point.x;
     obj.y2 = point.y;
@@ -676,6 +797,7 @@ canvas.addEventListener('pointerup', () => {
   }
   state.drawing = null;
   state.drag = null;
+  state.resize = null;
   render();
 });
 

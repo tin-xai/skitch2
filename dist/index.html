@@ -24,7 +24,7 @@
           <button class="tool" data-tool="pen" title="Pen">✎</button>
           <button class="tool" data-tool="highlight" title="Highlight">▰</button>
           <button class="tool" data-tool="text" title="Text">T</button>
-          <button class="tool" data-tool="icon" title="Icon stamp">★</button>
+          <button class="tool" data-tool="icon" title="Stamp or emoji">★</button>
           <button class="tool" data-tool="blur" title="Blur patch">▧</button>
           <button class="tool" data-tool="pixelate" title="Pixelate patch">▦</button>
           <button class="tool" data-tool="crop" title="Crop">⌗</button>
@@ -33,7 +33,7 @@
         <div class="panel">
           <label>Stroke <input id="colorInput" type="color" value="#ff3158"></label>
           <label>Fill <input id="fillInput" type="color" value="#fff3a1"></label>
-          <label>Size <input id="sizeInput" type="range" min="2" max="72" value="24"></label>
+          <label>Size <input id="sizeInput" type="range" min="2" max="300" value="24"></label>
           <label>Opacity <input id="opacityInput" type="range" min="15" max="100" value="100"></label>
           <label>Font
             <select id="fontInput">
@@ -51,7 +51,7 @@
         </div>
 
         <div class="panel icons">
-          <div class="panel-title">Stamps</div>
+          <div class="panel-title">Stamps &amp; emoji</div>
           <div id="stampGrid" class="stamp-grid"></div>
         </div>
       </aside>
@@ -99,6 +99,7 @@
         <div class="panel">
           <div class="panel-title">Selected</div>
           <div id="selectionInfo" class="empty">Nothing selected</div>
+          <div class="resize-hint">Drag a blue corner handle to resize.</div>
           <button id="bringForwardBtn">Bring forward</button>
           <button id="sendBackBtn">Send back</button>
           <button id="duplicateBtn">Duplicate</button>
